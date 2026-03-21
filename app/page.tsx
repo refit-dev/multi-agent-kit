@@ -1,65 +1,141 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function Home() {
+const features = [
+  { icon: '🔐', title: 'Auth out of the box', desc: 'Clerk integration with protected routes, webhooks, and user sync to your DB.' },
+  { icon: '💳', title: 'Stripe subscriptions', desc: 'Free + Pro tiers pre-wired. Checkout, portal, and webhooks all handled.' },
+  { icon: '🧠', title: 'Agent memory', desc: 'Conversation history persists across sessions. Auto-summarizes when context gets long.' },
+  { icon: '🔄', title: 'Built-in RLHF loop', desc: 'Thumbs up/down on every response. Thompson sampling bandit auto-promotes winning prompts.' },
+  { icon: '⚡', title: 'Claude streaming', desc: 'Streaming responses with SSE. Token counting and usage tracking per user.' },
+  { icon: '🛡️', title: 'Rate limiting', desc: 'Upstash Redis rate limiter. Free users get 10 msgs/day. Pro gets 200.' },
+]
+
+const stack = ['Next.js 15', 'TypeScript', 'Tailwind CSS', 'shadcn/ui', 'Clerk', 'Supabase', 'Stripe', 'Anthropic Claude', 'Upstash Redis']
+
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-black text-white">
+      {/* Nav */}
+      <nav className="border-b border-white/10 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
+        <span className="font-bold text-lg tracking-tight">AgentKit</span>
+        <div className="flex items-center gap-3">
+          <a href="https://github.com" className="text-sm text-zinc-400 hover:text-white transition-colors">GitHub</a>
+          <Link href="/sign-in">
+            <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10">Sign in</Button>
+          </Link>
+          <Link href="/sign-up">
+            <Button size="sm" className="bg-white text-black hover:bg-zinc-200">Get started</Button>
+          </Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
+      </nav>
+
+      {/* Hero */}
+      <section className="max-w-4xl mx-auto px-6 pt-24 pb-16 text-center">
+        <Badge className="mb-6 bg-white/10 text-white border-white/20 hover:bg-white/10">
+          Open source · MIT license
+        </Badge>
+        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-tight mb-6">
+          Ship your AI product<br />
+          <span className="text-zinc-400">this weekend, not this month</span>
+        </h1>
+        <p className="text-xl text-zinc-400 max-w-2xl mx-auto mb-10">
+          The only Next.js boilerplate with a built-in RLHF feedback loop.
+          Auth, payments, streaming, memory, and self-improving prompts — all pre-wired.
+          Save 20+ hours of setup.
+        </p>
+        <div className="flex items-center justify-center gap-4 flex-wrap">
+          <Link href="/sign-up">
+            <Button size="lg" className="bg-white text-black hover:bg-zinc-200 text-base px-8">
+              Start building free
+            </Button>
+          </Link>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+            <Button size="lg" variant="outline" className="border-white/20 text-white hover:bg-white/10 text-base px-8">
+              View on GitHub
+            </Button>
           </a>
         </div>
-      </main>
+        <p className="mt-4 text-sm text-zinc-500">Free tier available · Pro at $19/month</p>
+      </section>
+
+      {/* Features */}
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-bold text-center mb-12">Everything wired up. Nothing left to boilerplate.</h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {features.map(f => (
+            <Card key={f.title} className="bg-white/5 border-white/10 text-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <span>{f.icon}</span> {f.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-zinc-400">{f.desc}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* Stack */}
+      <section className="max-w-4xl mx-auto px-6 py-12 text-center">
+        <h2 className="text-lg font-semibold text-zinc-400 mb-6">Built with the best stack</h2>
+        <div className="flex flex-wrap justify-center gap-3">
+          {stack.map(s => (
+            <Badge key={s} className="bg-white/10 text-white border-white/20 hover:bg-white/10 text-sm py-1 px-3">
+              {s}
+            </Badge>
+          ))}
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="max-w-4xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-bold text-center mb-12">Simple pricing</h2>
+        <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+          <Card className="bg-white/5 border-white/10 text-white">
+            <CardHeader>
+              <CardTitle>Free</CardTitle>
+              <p className="text-3xl font-bold">$0<span className="text-sm font-normal text-zinc-400">/month</span></p>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-zinc-400">
+              <p>✓ 10 messages/day</p>
+              <p>✓ 10-message memory window</p>
+              <p>✓ RLHF feedback loop</p>
+              <p>✓ Full source code</p>
+              <Link href="/sign-up" className="block mt-4">
+                <Button className="w-full bg-white/10 hover:bg-white/20 text-white">Get started</Button>
+              </Link>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-white text-black">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-black">Pro</CardTitle>
+                <Badge className="bg-black text-white">Popular</Badge>
+              </div>
+              <p className="text-3xl font-bold text-black">$19<span className="text-sm font-normal text-zinc-600">/month</span></p>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-zinc-600">
+              <p>✓ 200 messages/day</p>
+              <p>✓ Full persistent memory</p>
+              <p>✓ Auto-summarization</p>
+              <p>✓ Advanced bandit analytics</p>
+              <p>✓ Priority support</p>
+              <Link href="/sign-up" className="block mt-4">
+                <Button className="w-full bg-black text-white hover:bg-zinc-800">Upgrade to Pro</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 py-8 text-center text-sm text-zinc-500">
+        <p>AgentKit · Open source · MIT · Built in 48 hours</p>
+      </footer>
     </div>
-  );
+  )
 }

@@ -1,36 +1,108 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentKit — AI SaaS Boilerplate
 
-## Getting Started
+> Ship your AI product this weekend, not this month.
 
-First, run the development server:
+The only Next.js boilerplate with a **built-in RLHF feedback loop**. Every time a user gives a thumbs up or down, a Thompson sampling bandit learns which system prompt performs best — automatically.
+
+## What's included
+
+| Feature | Details |
+|---|---|
+| 🔐 Auth | Clerk — sign in/up, protected routes, user webhooks |
+| 💳 Payments | Stripe — Free + Pro subscriptions, checkout, billing portal |
+| 🧠 Memory | Conversation history in Postgres. Auto-summarizes when context window gets long |
+| 🔄 RLHF loop | Thumbs up/down → Thompson sampling bandit → best prompt wins |
+| ⚡ Streaming | Claude claude-sonnet-4-6 via SSE. Token counting per message |
+| 🛡️ Rate limiting | Upstash Redis. Free: 10 msgs/day. Pro: 200 msgs/day |
+| 📊 Dashboard | Usage stats, bandit win rates, plan management |
+| 🚀 Deploy | Vercel-ready |
+
+## Stack
+
+Next.js 15 · TypeScript · Tailwind · shadcn/ui · Clerk · Supabase · Stripe · Anthropic Claude · Upstash Redis
+
+## Setup (< 20 minutes)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/yourusername/agentkit
+cd agentkit
+npm install
+cp .env.example .env.local
+```
+
+### 2. Clerk (Auth)
+
+1. Create project at [clerk.com](https://clerk.com)
+2. Copy `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
+3. Webhooks → Add endpoint: `https://yourdomain.com/api/webhooks/clerk`
+4. Events: `user.created`, `user.deleted` → copy signing secret to `CLERK_WEBHOOK_SECRET`
+
+### 3. Supabase (Database)
+
+1. Create project at [supabase.com](https://supabase.com)
+2. SQL Editor → paste and run `lib/schema.sql`
+3. Copy URL and keys to `.env.local`
+
+### 4. Stripe (Payments)
+
+1. Create recurring price at $19/month → copy `STRIPE_PRO_PRICE_ID`
+2. Copy publishable + secret keys
+3. Local: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
+
+### 5. Anthropic
+
+Get API key at [console.anthropic.com](https://console.anthropic.com)
+
+### 6. Upstash Redis
+
+Create free database at [upstash.com](https://upstash.com)
+
+### 7. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How the RLHF loop works
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Every assistant message has a 👍 / 👎 button
+2. Feedback is stored per message in Postgres
+3. A **Thompson Sampling bandit** tracks wins/trials per system prompt variant
+4. New conversations automatically get the variant with the highest sampled reward
+5. Dashboard shows win rates in real time
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Your AI product gets measurably better as users interact with it — zero manual prompt tweaking.
 
-## Learn More
+## Customizing prompts
 
-To learn more about Next.js, take a look at the following resources:
+Add new variants in Supabase:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+insert into prompt_variants (name, content) values
+  ('my_variant', 'You are a specialized assistant for...');
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The bandit starts testing it automatically.
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push to GitHub → Import to Vercel → Add env vars → Deploy.
+
+## Pricing model (included)
+
+- Free: 10 msgs/day, limited memory → drives signups
+- Pro ($19/month): 200 msgs/day, full persistent memory → revenue
+
+Edit limits in `lib/rate-limit.ts`.
+
+## License
+
+MIT. Star the repo if it saved you time.
+
+---
+
+Built in 48 hours. Open source.
