@@ -9,6 +9,7 @@
 import { webSearchAgent } from './agents/web-search-agent.js'
 import { scriptWriterAgent } from './agents/script-writer-agent.js'
 import { audioGenAgent } from './agents/audio-gen-agent.js'
+import { videoGenAgent } from './agents/video-gen-agent.js'
 import { calculateCost, formatCost } from './cost.js'
 import type {
   PipelineConfig,
@@ -75,6 +76,20 @@ export class VideoPipeline {
       undefined
     )
 
+    // ── Agent 4: Video Generation (optional) ────────────────────────────────
+    if (this.config.generateVideo) {
+      ctx.video = await this.runAgent(
+        ctx,
+        'video-gen',
+        'Video Gen Agent',
+        () => videoGenAgent(ctx),
+        (r) => `${ctx.script!.sections.length} script sections + audio at ${ctx.audio!.filePath}`,
+        (r) => `Video saved to ${r.filePath} (${r.sections} scenes, ~${r.durationSeconds}s)`,
+        undefined,
+        undefined
+      )
+    }
+
     this.config.onProgress?.({ stage: 'done', message: 'Pipeline complete!' })
 
     // ── Aggregate results ────────────────────────────────────────────────────
@@ -86,6 +101,7 @@ export class VideoPipeline {
       searchResults: ctx.searchResults!,
       script: ctx.script!,
       audio: ctx.audio!,
+      video: ctx.video,
       traces: ctx.traces,
       totalCostUsd,
       totalCostFormatted: formatCost(totalCostUsd),

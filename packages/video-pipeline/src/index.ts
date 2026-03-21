@@ -33,6 +33,7 @@ export type {
   VideoScript,
   ScriptSection,
   AudioOutput,
+  VideoOutput,
   AgentTrace,
   TokenUsage,
   ProgressEvent,

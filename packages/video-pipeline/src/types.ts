@@ -11,13 +11,15 @@ export interface PipelineConfig {
   anthropicApiKey: string
   tavilyApiKey: string
   elevenLabsApiKey: string
+  openaiApiKey?: string           // required only if generateVideo: true
 
   // Optional overrides
   searchMaxResults?: number       // default: 5
   scriptTargetDuration?: number   // seconds, default: 60
   elevenLabsVoiceId?: string      // override auto voice selection
   elevenLabsModel?: string        // default: 'eleven_turbo_v2_5'
-  outputDir?: string              // where to save audio file, default: './output'
+  generateVideo?: boolean         // run VideoGenAgent (needs openaiApiKey + ffmpeg), default: false
+  outputDir?: string              // where to save files, default: './output'
   onProgress?: (event: ProgressEvent) => void  // progress callback
 }
 
@@ -39,6 +41,9 @@ export interface PipelineContext {
 
   // Set by AudioGenAgent
   audio?: AudioOutput
+
+  // Set by VideoGenAgent (optional)
+  video?: VideoOutput
 
   // Accumulated traces from all agents
   traces: AgentTrace[]
@@ -99,10 +104,20 @@ export interface AudioOutput {
   durationMs: number
 }
 
+// ── Video Gen Agent types ─────────────────────────────────────────────────────
+
+export interface VideoOutput {
+  filePath: string         // saved .mp4 path
+  durationSeconds: number
+  sections: number         // number of scenes
+  imagesGenerated: number
+  durationMs: number
+}
+
 // ── Tracing types ─────────────────────────────────────────────────────────────
 
 export interface AgentTrace {
-  agentId: 'web-search' | 'script-writer' | 'audio-gen'
+  agentId: 'web-search' | 'script-writer' | 'audio-gen' | 'video-gen'
   agentName: string
   status: 'success' | 'error'
   inputSummary: string   // what the agent received
@@ -129,6 +144,7 @@ export interface PipelineResult {
   searchResults: SearchResults
   script: VideoScript
   audio: AudioOutput
+  video?: VideoOutput          // present when generateVideo: true
   traces: AgentTrace[]
   totalCostUsd: number
   totalCostFormatted: string
@@ -139,11 +155,13 @@ export interface PipelineResult {
 // ── Progress Events ───────────────────────────────────────────────────────────
 
 export type ProgressEvent =
-  | { stage: 'searching';       message: string }
-  | { stage: 'synthesizing';    message: string }
-  | { stage: 'writing-script';  message: string }
-  | { stage: 'generating-audio'; message: string }
-  | { stage: 'done';            message: string }
+  | { stage: 'searching';          message: string }
+  | { stage: 'synthesizing';       message: string }
+  | { stage: 'writing-script';     message: string }
+  | { stage: 'generating-audio';   message: string }
+  | { stage: 'generating-images';  message: string }
+  | { stage: 'assembling-video';   message: string }
+  | { stage: 'done';               message: string }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
