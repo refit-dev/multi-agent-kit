@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const features = [
-  { icon: '🔐', title: 'Auth out of the box', desc: 'Clerk integration with protected routes, webhooks, and user sync to your DB.' },
-  { icon: '💳', title: 'Stripe subscriptions', desc: 'Free + Pro tiers pre-wired. Checkout, portal, and webhooks all handled.' },
-  { icon: '🧠', title: 'Agent memory', desc: 'Conversation history persists across sessions. Auto-summarizes when context gets long.' },
-  { icon: '🔄', title: 'Built-in RLHF loop', desc: 'Thumbs up/down on every response. Thompson sampling bandit auto-promotes winning prompts.' },
-  { icon: '⚡', title: 'Claude streaming', desc: 'Streaming responses with SSE. Token counting and usage tracking per user.' },
-  { icon: '🛡️', title: 'Rate limiting', desc: 'Upstash Redis rate limiter. Free users get 10 msgs/day. Pro gets 200.' },
+  { icon: '🤖', title: 'Agent router', desc: 'A router agent reads each message and dispatches to the best specialist: Researcher, Coder, Analyst, Writer, or Planner.' },
+  { icon: '🧠', title: 'Shared agent memory', desc: 'Each agent can see what previous agents did. No repeated work, no lost context across handoffs.' },
+  { icon: '🔄', title: 'Built-in RLHF loop', desc: 'Thumbs up/down trains a Thompson sampling bandit to auto-promote whichever agent+prompt combo performs best.' },
+  { icon: '📊', title: 'Agent observability', desc: 'Dashboard shows which agents ran, how many tokens each used, and win rates per agent. Know exactly what your system is doing.' },
+  { icon: '⚡', title: 'Streaming across agents', desc: 'SSE streaming from any agent. Context window managed per-agent so no single agent blows its limit.' },
+  { icon: '💳', title: 'Auth + billing included', desc: 'Clerk auth + Stripe Free/Pro subscriptions pre-wired. Rate limiting per plan. Ship in hours not weeks.' },
 ]
 
 const stack = ['Next.js 15', 'TypeScript', 'Tailwind CSS', 'shadcn/ui', 'Clerk', 'Supabase', 'Stripe', 'Anthropic Claude', 'Upstash Redis']
@@ -37,13 +37,13 @@ export default function LandingPage() {
           Open source · MIT license
         </Badge>
         <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-tight mb-6">
-          Ship your AI product<br />
-          <span className="text-zinc-400">this weekend, not this month</span>
+          The multi-agent kit<br />
+          <span className="text-zinc-400">that actually ships to prod</span>
         </h1>
         <p className="text-xl text-zinc-400 max-w-2xl mx-auto mb-10">
-          The only Next.js boilerplate with a built-in RLHF feedback loop.
-          Auth, payments, streaming, memory, and self-improving prompts — all pre-wired.
-          Save 20+ hours of setup.
+          Agent routing, shared memory, context management, RLHF feedback loops,
+          observability, auth, and billing — all pre-wired in one Next.js boilerplate.
+          Stop reinventing multi-agent infrastructure.
         </p>
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <Link href="/sign-up">
@@ -62,7 +62,7 @@ export default function LandingPage() {
 
       {/* Features */}
       <section className="max-w-6xl mx-auto px-6 py-16">
-        <h2 className="text-2xl font-bold text-center mb-12">Everything wired up. Nothing left to boilerplate.</h2>
+        <h2 className="text-2xl font-bold text-center mb-12">Multi-agent infrastructure. Nothing left to figure out.</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map(f => (
             <Card key={f.title} className="bg-white/5 border-white/10 text-white">

@@ -1,4 +1,4 @@
--- AgentKit — Supabase Schema
+-- multi-agent-kit — Supabase Schema
 -- Run this in your Supabase SQL editor
 
 -- Users (synced from Clerk via webhook)
@@ -58,12 +58,36 @@ create table if not exists usage_logs (
   unique(user_id, date)
 );
 
+-- Agent runs (observability + shared memory across agents)
+create table if not exists agent_runs (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  agent_id text not null,   -- 'researcher', 'coder', 'analyst', 'writer', 'planner'
+  input text not null,
+  output text not null,
+  token_count integer not null default 0,
+  feedback smallint check (feedback in (1, -1)),
+  created_at timestamptz default now()
+);
+
+-- Increment usage helper function
+create or replace function increment_usage(p_user_id uuid, p_tokens integer)
+returns void language plpgsql as $$
+begin
+  insert into usage_logs (user_id, tokens_used, date)
+  values (p_user_id, p_tokens, current_date)
+  on conflict (user_id, date)
+  do update set tokens_used = usage_logs.tokens_used + p_tokens;
+end;
+$$;
+
 -- RLS policies (enable row level security)
 alter table users enable row level security;
 alter table conversations enable row level security;
 alter table messages enable row level security;
 alter table usage_logs enable row level security;
 alter table prompt_variants enable row level security;
+alter table agent_runs enable row level security;
 
 -- Service role bypasses RLS (used server-side)
 create policy "service role full access" on users for all using (true);
@@ -71,3 +95,4 @@ create policy "service role full access" on conversations for all using (true);
 create policy "service role full access" on messages for all using (true);
 create policy "service role full access" on usage_logs for all using (true);
 create policy "service role full access" on prompt_variants for all using (true);
+create policy "service role full access" on agent_runs for all using (true);

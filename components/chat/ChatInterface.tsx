@@ -6,10 +6,20 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 
+const AGENT_COLORS: Record<string, string> = {
+  researcher: 'text-blue-400',
+  coder: 'text-green-400',
+  analyst: 'text-yellow-400',
+  writer: 'text-purple-400',
+  planner: 'text-orange-400',
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  agentName?: string
+  agentId?: string
   feedback?: 1 | -1 | null
 }
 
@@ -22,6 +32,7 @@ export default function ChatInterface({ plan, initialConversationId }: ChatInter
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [activeAgent, setActiveAgent] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState(initialConversationId)
   const [remaining, setRemaining] = useState<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -40,6 +51,7 @@ export default function ChatInterface({ plan, initialConversationId }: ChatInter
 
     const assistantId = `${Date.now()}-ai`
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', feedback: null }])
+    setActiveAgent(null)
 
     try {
       const res = await fetch('/api/chat', {
@@ -74,6 +86,14 @@ export default function ChatInterface({ plan, initialConversationId }: ChatInter
           if (data.type === 'meta') {
             if (!conversationId) setConversationId(data.conversationId)
             setRemaining(data.remaining)
+            if (data.agent) {
+              setActiveAgent(data.agent.name)
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId
+                  ? { ...m, agentName: data.agent.name, agentId: data.agent.id }
+                  : m
+              ))
+            }
           }
 
           if (data.type === 'delta') {
@@ -130,13 +150,20 @@ export default function ChatInterface({ plan, initialConversationId }: ChatInter
           {messages.map(msg => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`group max-w-[80%] ${msg.role === 'user' ? 'order-2' : ''}`}>
+                {msg.role === 'assistant' && msg.agentName && (
+                  <div className={`text-xs font-medium mb-1 ${AGENT_COLORS[msg.agentId ?? ''] ?? 'text-zinc-400'}`}>
+                    {msg.agentName} Agent
+                  </div>
+                )}
                 <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
                     ? 'bg-white text-black rounded-br-sm'
                     : 'bg-white/10 text-white rounded-bl-sm'
                 }`}>
                   {msg.content || (loading && msg.role === 'assistant' ? (
-                    <span className="animate-pulse text-zinc-500">Thinking…</span>
+                    <span className="animate-pulse text-zinc-500">
+                      {activeAgent ? `${activeAgent} Agent thinking…` : 'Routing…'}
+                    </span>
                   ) : '')}
                 </div>
 
