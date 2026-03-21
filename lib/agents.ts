@@ -1,16 +1,16 @@
 /**
- * multi-agent-kit — Agent Definitions & Orchestrator
+ * multi-agent-kit — Agent Definitions, Router & Observability
  *
- * How it works:
- * 1. User sends a message
- * 2. RouterAgent reads it and picks the best specialist agent
- * 3. The specialist agent runs with its own focused system prompt
- * 4. Results are stored in shared memory (Postgres) so other agents can read them
- * 5. RLHF bandit tracks which agent selection gets thumbs up → improves routing over time
+ * Architecture:
+ * 1. RouterAgent picks the best specialist (Haiku — fast, cheap)
+ * 2. Specialist runs with its own system prompt + shared context from prior agents
+ * 3. Every run is stored in agent_runs with real token counts + $ cost
+ * 4. The trace viewer reads agent_runs to show exactly what happened
  */
 
 import Anthropic from '@anthropic-ai/sdk'
 import { supabase } from './supabase'
+import { calculateCost, contextUtilization } from './cost'
 
 const client = new Anthropic()
 
@@ -19,7 +19,8 @@ const client = new Anthropic()
 export interface AgentDefinition {
   id: string
   name: string
-  description: string   // used by the router to decide who to call
+  emoji: string
+  description: string   // used by router to decide who to call
   systemPrompt: string
   model: string
   maxTokens: number
@@ -29,25 +30,28 @@ export const AGENTS: AgentDefinition[] = [
   {
     id: 'researcher',
     name: 'Researcher',
-    description: 'Finds information, summarizes knowledge, answers factual questions',
+    emoji: '🔍',
+    description: 'Finds information, summarizes knowledge, answers factual or explanatory questions',
     systemPrompt: `You are a research specialist. Your job is to find and synthesize information clearly and accurately.
-Be thorough but concise. Cite your reasoning. Structure complex answers with headers.`,
+Be thorough but concise. Structure complex answers with headers when helpful. Cite your reasoning.`,
     model: 'claude-sonnet-4-6',
     maxTokens: 1024,
   },
   {
     id: 'coder',
     name: 'Coder',
-    description: 'Writes, reviews, debugs, and explains code in any language',
+    emoji: '💻',
+    description: 'Writes, reviews, debugs, and explains code in any programming language',
     systemPrompt: `You are an expert software engineer. Write clean, production-ready code with clear explanations.
-Always explain what the code does and why. Point out edge cases and potential bugs.`,
+Always explain what the code does and why. Use code blocks. Point out edge cases and potential bugs.`,
     model: 'claude-sonnet-4-6',
     maxTokens: 2048,
   },
   {
     id: 'analyst',
     name: 'Analyst',
-    description: 'Analyzes data, finds patterns, makes decisions, evaluates trade-offs',
+    emoji: '📊',
+    description: 'Analyzes situations, evaluates trade-offs, makes decisions, compares options',
     systemPrompt: `You are a critical thinking analyst. Break down complex problems systematically.
 List pros/cons, quantify where possible, and give a clear recommendation with reasoning.`,
     model: 'claude-sonnet-4-6',
@@ -56,7 +60,8 @@ List pros/cons, quantify where possible, and give a clear recommendation with re
   {
     id: 'writer',
     name: 'Writer',
-    description: 'Writes and edits content — emails, docs, posts, copy, summaries',
+    emoji: '✍️',
+    description: 'Writes and edits content — emails, docs, blog posts, copy, summaries, messages',
     systemPrompt: `You are a professional writer and editor. Write clearly, concisely, and with appropriate tone.
 Match the user's voice when editing. Make content compelling and easy to read.`,
     model: 'claude-sonnet-4-6',
@@ -65,71 +70,51 @@ Match the user's voice when editing. Make content compelling and easy to read.`,
   {
     id: 'planner',
     name: 'Planner',
-    description: 'Breaks down complex tasks, creates step-by-step plans and roadmaps',
+    emoji: '📋',
+    description: 'Breaks down complex tasks, creates step-by-step plans, roadmaps, and action items',
     systemPrompt: `You are a strategic planner. Break ambiguous goals into clear, actionable steps.
-Create concrete plans with priorities, dependencies, and success criteria.`,
+Create concrete plans with priorities, dependencies, and success criteria. Use numbered lists.`,
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
   },
 ]
 
-// ── Router Agent ──────────────────────────────────────────────────────────────
+// ── Router ────────────────────────────────────────────────────────────────────
 
 export async function routeToAgent(
   message: string,
-  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
-): Promise<AgentDefinition> {
-  const agentList = AGENTS.map(a => `- ${a.id}: ${a.description}`).join('\n')
+  history: { role: 'user' | 'assistant'; content: string }[]
+): Promise<{ agent: AgentDefinition; reason: string }> {
+  const agentList = AGENTS.map(a => `${a.id}: ${a.description}`).join('\n')
 
-  const routerResponse = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',  // fast + cheap for routing
-    max_tokens: 50,
-    system: `You are a routing agent. Given a user message, pick the BEST specialist agent to handle it.
-Respond with ONLY the agent ID. Available agents:
-${agentList}`,
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 100,
+    system: `You are a routing agent. Pick the best specialist for the user's message.
+Respond with JSON only: {"agent": "<agent_id>", "reason": "<one sentence why>"}
+Available agents:\n${agentList}`,
     messages: [
-      ...conversationHistory.slice(-4),  // last 4 messages for context
-      { role: 'user', content: `Route this message: "${message}"` },
+      ...history.slice(-4),
+      { role: 'user', content: message },
     ],
   })
 
-  const routedId = routerResponse.content[0].type === 'text'
-    ? routerResponse.content[0].text.trim().toLowerCase()
-    : 'researcher'
-
-  return AGENTS.find(a => a.id === routedId) ?? AGENTS[0]
+  try {
+    const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+    const agent = AGENTS.find(a => a.id === parsed.agent) ?? AGENTS[0]
+    return { agent, reason: parsed.reason ?? 'Best match for this request' }
+  } catch {
+    return { agent: AGENTS[0], reason: 'Default routing' }
+  }
 }
 
 // ── Shared Agent Memory ───────────────────────────────────────────────────────
 
-// Store agent output so other agents in the same conversation can read it
-export async function storeAgentOutput(params: {
-  conversationId: string
-  agentId: string
-  input: string
-  output: string
-  tokenCount: number
-}): Promise<string> {
-  const { data } = await supabase
-    .from('agent_runs')
-    .insert({
-      conversation_id: params.conversationId,
-      agent_id: params.agentId,
-      input: params.input,
-      output: params.output,
-      token_count: params.tokenCount,
-    })
-    .select('id')
-    .single()
-
-  return data?.id ?? ''
-}
-
-// Load what previous agents have done in this conversation (shared context)
 export async function loadAgentHistory(conversationId: string): Promise<string> {
   const { data: runs } = await supabase
     .from('agent_runs')
-    .select('agent_id, input, output, created_at')
+    .select('agent_id, input, output, cost_usd, created_at')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true })
     .limit(10)
@@ -137,29 +122,122 @@ export async function loadAgentHistory(conversationId: string): Promise<string> 
   if (!runs || runs.length === 0) return ''
 
   return runs
-    .map(r => `[${r.agent_id.toUpperCase()} AGENT]\nTask: ${r.input}\nResult: ${r.output}`)
+    .map(r => `[${r.agent_id.toUpperCase()} AGENT — $${Number(r.cost_usd).toFixed(4)}]\nTask: ${r.input}\nResult: ${r.output}`)
     .join('\n\n---\n\n')
 }
 
-// Get agent run stats for observability dashboard
-export async function getAgentStats(userId: string) {
+// ── Store Agent Run (with real token counts + cost) ───────────────────────────
+
+export async function storeAgentRun(params: {
+  conversationId: string
+  messageId: string
+  agentId: string
+  model: string
+  input: string
+  contextSnapshot: string
+  output: string
+  routingReason: string
+  inputTokens: number
+  outputTokens: number
+  durationMs: number
+}): Promise<string> {
+  const costUsd = calculateCost({
+    model: params.model,
+    inputTokens: params.inputTokens,
+    outputTokens: params.outputTokens,
+  })
+
+  const ctxUtil = contextUtilization(params.model, params.inputTokens)
+
   const { data } = await supabase
     .from('agent_runs')
-    .select('agent_id, token_count, conversations!inner(user_id)')
-    .eq('conversations.user_id', userId)
+    .insert({
+      conversation_id: params.conversationId,
+      message_id: params.messageId,
+      agent_id: params.agentId,
+      model: params.model,
+      input: params.input,
+      context_snapshot: params.contextSnapshot,
+      output: params.output,
+      routing_reason: params.routingReason,
+      input_tokens: params.inputTokens,
+      output_tokens: params.outputTokens,
+      cost_usd: costUsd,
+      context_utilization: ctxUtil,
+      duration_ms: params.durationMs,
+    })
+    .select('id')
+    .single()
+
+  return data?.id ?? ''
+}
+
+// ── Observability Queries ─────────────────────────────────────────────────────
+
+export async function getAgentStats(userId: string) {
+  const { data: conversations } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('user_id', userId)
+
+  if (!conversations?.length) return []
+
+  const convIds = conversations.map(c => c.id)
+
+  const { data } = await supabase
+    .from('agent_runs')
+    .select('agent_id, input_tokens, output_tokens, cost_usd, duration_ms, feedback')
+    .in('conversation_id', convIds)
 
   if (!data) return []
 
-  const stats: Record<string, { runs: number; tokens: number }> = {}
+  const stats: Record<string, {
+    runs: number
+    inputTokens: number
+    outputTokens: number
+    costUsd: number
+    totalDurationMs: number
+    thumbsUp: number
+    thumbsDown: number
+  }> = {}
+
   for (const run of data) {
-    if (!stats[run.agent_id]) stats[run.agent_id] = { runs: 0, tokens: 0 }
-    stats[run.agent_id].runs++
-    stats[run.agent_id].tokens += run.token_count
+    if (!stats[run.agent_id]) {
+      stats[run.agent_id] = { runs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, totalDurationMs: 0, thumbsUp: 0, thumbsDown: 0 }
+    }
+    const s = stats[run.agent_id]
+    s.runs++
+    s.inputTokens += run.input_tokens
+    s.outputTokens += run.output_tokens
+    s.costUsd += Number(run.cost_usd)
+    s.totalDurationMs += run.duration_ms ?? 0
+    if (run.feedback === 1) s.thumbsUp++
+    if (run.feedback === -1) s.thumbsDown++
   }
+
+  const agentMeta = Object.fromEntries(AGENTS.map(a => [a.id, { name: a.name, emoji: a.emoji }]))
 
   return Object.entries(stats).map(([agentId, s]) => ({
     agentId,
-    name: AGENTS.find(a => a.id === agentId)?.name ?? agentId,
-    ...s,
-  }))
+    name: agentMeta[agentId]?.name ?? agentId,
+    emoji: agentMeta[agentId]?.emoji ?? '🤖',
+    runs: s.runs,
+    inputTokens: s.inputTokens,
+    outputTokens: s.outputTokens,
+    costUsd: s.costUsd,
+    avgDurationMs: s.runs > 0 ? Math.round(s.totalDurationMs / s.runs) : 0,
+    winRate: (s.thumbsUp + s.thumbsDown) > 0
+      ? Math.round((s.thumbsUp / (s.thumbsUp + s.thumbsDown)) * 100)
+      : null,
+  })).sort((a, b) => b.runs - a.runs)
+}
+
+export async function getConversationTrace(conversationId: string) {
+  const { data } = await supabase
+    .from('agent_runs')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+
+  return data ?? []
 }

@@ -2,10 +2,11 @@ import { auth } from '@clerk/nextjs/server'
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabase } from '@/lib/supabase'
-import { loadMemory, saveMessage, estimateTokens } from '@/lib/memory'
+import { loadMemory, saveMessage } from '@/lib/memory'
 import { selectPromptVariant } from '@/lib/bandit'
-import { checkRateLimit, trackTokenUsage } from '@/lib/rate-limit'
-import { routeToAgent, loadAgentHistory, storeAgentOutput } from '@/lib/agents'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { routeToAgent, loadAgentHistory, storeAgentRun } from '@/lib/agents'
+import { calculateCost } from '@/lib/cost'
 
 const client = new Anthropic()
 
@@ -16,7 +17,6 @@ export async function POST(req: NextRequest) {
   const { message, conversationId } = await req.json()
   if (!message) return new Response('Message required', { status: 400 })
 
-  // Get user + plan
   const { data: user } = await supabase
     .from('users')
     .select('id, plan')
@@ -25,7 +25,6 @@ export async function POST(req: NextRequest) {
 
   if (!user) return new Response('User not found', { status: 404 })
 
-  // Rate limit check
   const { allowed, remaining } = await checkRateLimit(user.id, user.plan)
   if (!allowed) {
     return new Response(
@@ -36,44 +35,48 @@ export async function POST(req: NextRequest) {
 
   // Get or create conversation
   let convId = conversationId
-  let systemPromptVariantId: string
-
   if (!convId) {
     const variant = await selectPromptVariant()
-    systemPromptVariantId = variant.id
-
     const { data: conv } = await supabase
       .from('conversations')
       .insert({
         user_id: user.id,
         title: message.slice(0, 60),
-        system_prompt_variant: systemPromptVariantId,
+        system_prompt_variant: variant.id,
       })
       .select('id')
       .single()
-
     convId = conv?.id
   }
 
-  // Load conversation memory + what other agents have done (shared context)
+  // Load history + shared agent memory in parallel
   const [history, agentHistory] = await Promise.all([
     loadMemory(convId, user.plan),
     loadAgentHistory(convId),
   ])
 
-  // Route to best specialist agent
-  const agent = await routeToAgent(message, history)
+  // Route to best agent — captures routing reason for the trace
+  const { agent, reason: routingReason } = await routeToAgent(message, history)
 
-  // Build system prompt: agent's base prompt + shared agent memory
+  // Build the full system prompt the agent will see
   const systemPrompt = agentHistory
-    ? `${agent.systemPrompt}\n\n## Context from other agents in this conversation:\n${agentHistory}`
+    ? `${agent.systemPrompt}\n\n## Work already done in this conversation:\n${agentHistory}`
     : agent.systemPrompt
 
-  // Save user message
+  // Build the full context snapshot we're sending (for the trace viewer)
+  const contextSnapshot = JSON.stringify({
+    systemPromptLength: systemPrompt.length,
+    historyMessages: history.length,
+    sharedAgentRuns: agentHistory ? agentHistory.split('---').length : 0,
+  })
+
+  // Save the user message first
   await saveMessage({ conversationId: convId, role: 'user', content: message })
 
-  // Stream response from the selected agent
-  const stream = await client.messages.stream({
+  const startTime = Date.now()
+
+  // Stream from selected agent — use .stream() to get real token counts at end
+  const stream = client.messages.stream({
     model: agent.model,
     max_tokens: agent.maxTokens,
     system: systemPrompt,
@@ -85,16 +88,18 @@ export async function POST(req: NextRequest) {
 
   const readable = new ReadableStream({
     async start(controller) {
-      // Send routing info first so the UI can show which agent is responding
+      // Send routing metadata first — UI uses this to show "Researcher Agent thinking..."
       controller.enqueue(
         encoder.encode(`data: ${JSON.stringify({
           type: 'meta',
           conversationId: convId,
           remaining,
-          agent: { id: agent.id, name: agent.name },
+          agent: { id: agent.id, name: agent.name, emoji: agent.emoji },
+          routingReason,
         })}\n\n`)
       )
 
+      // Stream text deltas
       for await (const chunk of stream) {
         if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
           fullResponse += chunk.delta.text
@@ -104,21 +109,54 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Save to messages + agent_runs (shared memory for other agents)
-      const [msgId] = await Promise.all([
-        saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse }),
-        storeAgentOutput({
+      const durationMs = Date.now() - startTime
+
+      // Get REAL token counts from Anthropic — not estimates
+      const finalMessage = await stream.finalMessage()
+      const inputTokens = finalMessage.usage.input_tokens
+      const outputTokens = finalMessage.usage.output_tokens
+      const costUsd = calculateCost({ model: agent.model, inputTokens, outputTokens })
+
+      // Save assistant message + agent run in parallel
+      const msgId = await saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse })
+
+      await Promise.all([
+        storeAgentRun({
           conversationId: convId,
+          messageId: msgId,
           agentId: agent.id,
+          model: agent.model,
           input: message,
+          contextSnapshot,
           output: fullResponse,
-          tokenCount: estimateTokens(message + fullResponse),
+          routingReason,
+          inputTokens,
+          outputTokens,
+          durationMs,
         }),
-        trackTokenUsage(user.id, estimateTokens(message + fullResponse)),
+        // Track cost in cost_logs
+        supabase.rpc('increment_cost', {
+          p_user_id: user.id,
+          p_cost_usd: costUsd,
+          p_input_tokens: inputTokens,
+          p_output_tokens: outputTokens,
+        }),
+        supabase.rpc('increment_usage', {
+          p_user_id: user.id,
+          p_tokens: inputTokens + outputTokens,
+        }),
       ])
 
+      // Send final event with cost + token data for live cost meter
       controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify({ type: 'done', messageId: msgId })}\n\n`)
+        encoder.encode(`data: ${JSON.stringify({
+          type: 'done',
+          messageId: msgId,
+          inputTokens,
+          outputTokens,
+          costUsd,
+          durationMs,
+        })}\n\n`)
       )
       controller.close()
     },

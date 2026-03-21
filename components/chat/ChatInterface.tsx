@@ -107,6 +107,14 @@ export default function ChatInterface({ plan, initialConversationId }: ChatInter
             setMessages(prev => prev.map(m =>
               m.id === assistantId ? { ...m, id: realMessageId } : m
             ))
+            // Emit cost event so CostMeter updates live
+            window.dispatchEvent(new CustomEvent('agentkit:cost', {
+              detail: { costUsd: data.costUsd, conversationId }
+            }))
+            // Emit trace event so TraceViewer knows to refresh
+            window.dispatchEvent(new CustomEvent('agentkit:trace', {
+              detail: { conversationId }
+            }))
           }
         }
       }
