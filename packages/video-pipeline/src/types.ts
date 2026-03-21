@@ -11,14 +11,14 @@ export interface PipelineConfig {
   anthropicApiKey: string
   tavilyApiKey: string
   elevenLabsApiKey: string
-  openaiApiKey?: string           // required only if generateVideo: true
+  googleAiApiKey?: string         // required only if generateVideo: true (get from ai.google.dev)
 
   // Optional overrides
   searchMaxResults?: number       // default: 5
   scriptTargetDuration?: number   // seconds, default: 60
   elevenLabsVoiceId?: string      // override auto voice selection
   elevenLabsModel?: string        // default: 'eleven_turbo_v2_5'
-  generateVideo?: boolean         // run VideoGenAgent (needs openaiApiKey + ffmpeg), default: false
+  generateVideo?: boolean         // run VideoGenAgent (needs googleAiApiKey + ffmpeg), default: false
   outputDir?: string              // where to save files, default: './output'
   onProgress?: (event: ProgressEvent) => void  // progress callback
 }
@@ -110,7 +110,7 @@ export interface VideoOutput {
   filePath: string         // saved .mp4 path
   durationSeconds: number
   sections: number         // number of scenes
-  imagesGenerated: number
+  clipsGenerated: number   // Veo 3 clips generated
   durationMs: number
 }
 
@@ -159,7 +159,7 @@ export type ProgressEvent =
   | { stage: 'synthesizing';       message: string }
   | { stage: 'writing-script';     message: string }
   | { stage: 'generating-audio';   message: string }
-  | { stage: 'generating-images';  message: string }
+  | { stage: 'generating-video';   message: string }
   | { stage: 'assembling-video';   message: string }
   | { stage: 'done';               message: string }
 

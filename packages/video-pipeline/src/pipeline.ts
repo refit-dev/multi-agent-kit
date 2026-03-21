@@ -84,7 +84,7 @@ export class VideoPipeline {
         'Video Gen Agent',
         () => videoGenAgent(ctx),
         (r) => `${ctx.script!.sections.length} script sections + audio at ${ctx.audio!.filePath}`,
-        (r) => `Video saved to ${r.filePath} (${r.sections} scenes, ~${r.durationSeconds}s)`,
+        (r) => `Video saved to ${r.filePath} (${r.clipsGenerated} Veo 3 clips, ~${r.durationSeconds}s)`,
         undefined,
         undefined
       )
